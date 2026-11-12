@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Нови имоти - табло</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7280; --line:#e5e7eb; --red:#d92d20; --amber:#b54708; --blue:#1d4ed8; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111418; --card:#1a1f26; --text:#e8eaed; --muted:#9aa3ae; --line:#2b323b; --red:#f97066; --amber:#fdb022; --blue:#84adff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width:900px; margin:0 auto; padding:16px; }
+  header { display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+  h1 { font-size:20px; font-weight:600; margin:0; }
+  h2 { font-size:15px; font-weight:600; margin:20px 0 8px; }
+  .muted { color:var(--muted); font-size:13px; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:14px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  .stat b { display:block; font-size:26px; font-weight:600; }
+  .filters { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  button, select, input { font:inherit; color:inherit; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:6px 12px; }
+  button { cursor:pointer; }
+  button.on { border-color:var(--blue); color:var(--blue); }
+  .list { background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .row { display:flex; gap:12px; align-items:center; padding:10px 14px; border-top:1px solid var(--line); }
+  .row:first-child { border-top:0; }
+  .dot { width:10px; height:10px; border-radius:50%; flex:none; background:var(--red); }
+  .dot.amber { background:var(--amber); }
+  .main { flex:1; min-width:0; }
+  .title { font-weight:600; }
+  .age { text-align:right; font-size:13px; white-space:nowrap; }
+  .age.fresh { color:var(--red); }
+  a { color:var(--blue); }
+  a.open { text-decoration:none; font-size:13px; white-space:nowrap; }
+  .empty { padding:14px; color:var(--muted); }
+  .login { max-width:340px; margin:12vh auto; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; }
+  .login label { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
+  .login input { width:100%; }
+  .login button { width:100%; margin-top:16px; }
+  .err { color:var(--red); font-size:13px; min-height:18px; margin-top:8px; }
+  [hidden] { display:none !important; }
+  @media (max-width:560px) { .row { flex-wrap:wrap; } .age { text-align:left; } }
+</style>
+</head>
+<body>
+<main>
+  <form id="login" class="login" hidden>
+    <h1>Нови имоти</h1>
+    <label for="u">Потребител</label>
+    <input id="u" autocomplete="username" required>
+    <label for="p">Парола</label>
+    <input id="p" type="password" autocomplete="current-password" required>
+    <button type="submit">Вход</button>
+    <div id="loginErr" class="err" role="alert"></div>
+  </form>
+
+  <section id="app" hidden>
+    <header>
+      <h1>Нови имоти</h1>
+      <span class="muted"><span id="updated"></span> · <a href="#" id="logout">Изход</a></span>
+    </header>
+    <div class="stats">
+      <div class="stat"><span class="muted">Нови частни, последните 3 ч</span><b id="nNew">0</b></div>
+      <div class="stat"><span class="muted">Намалени цени, 24 ч</span><b id="nCheap">0</b></div>
+    </div>
+    <div class="filters">
+      <button data-h="3" class="on">3 часа</button>
+      <button data-h="24">24 часа</button>
+      <button data-h="168">7 дни</button>
+      <select id="src" aria-label="Източник"><option value="">Всички източници</option></select>
+    </div>
+    <h2>Нови частни обяви</h2>
+    <div id="newList" class="list"></div>
+    <h2>Намалена цена</h2>
+    <div id="cheapList" class="list"></div>
+    <p class="muted">Данните се обновяват всеки час (07-20 ч.). Страницата се презарежда сама на 5 минути.</p>
+  </section>
+</main>
+
+<script>
+// Настройки: адрес на Supabase и публичният (publishable / anon) ключ.
+// Публичният ключ е предвиден да стои в страници. Тайният (secret / service_role) - НИКОГА тук.
+const SUPABASE_URL = "https://douaxvjfbgwnyzqijqvw.supabase.co";
+const SUPABASE_KEY = "ПОСТАВЕТЕ_ПУБЛИЧНИЯ_КЛЮЧ";
+
+const TOKEN_KEY = "tablo_token";
+let items = [], serverNow = new Date(), hours = 3;
+
+async function rpc(fn, args) {
+  const r = await fetch(SUPABASE_URL + "/rest/v1/rpc/" + fn, {
+    method: "POST",
+    headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify(args)
+  });
+  if (!r.ok) throw new Error("Сървърът върна " + r.status);
+  return r.json();
+}
+
+function show(which) {
+  document.getElementById("login").hidden = which !== "login";
+  document.getElementById("app").hidden = which !== "app";
+}
+
+const money = v => v == null ? "цена при запитване" : Math.round(v).toLocaleString("bg-BG") + " €";
+const num = v => v == null ? "" : String(Math.round(v * 100) / 100);
+function ago(ts) {
+  const m = Math.max(0, Math.round((serverNow - new Date(ts)) / 60000));
+  if (m < 60) return "преди " + m + " мин";
+  const h = Math.floor(m / 60), r = m % 60;
+  if (h < 24) return "преди " + h + " ч" + (r ? " " + r + " мин" : "");
+  return "преди " + Math.floor(h / 24) + " д";
+}
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function place(it) { return [it.city, it.district].filter(Boolean).join(", ") || "-"; }
+function safeUrl(u) { return /^https:\/\//.test(u || "") ? u : "#"; }
+
+function rowHtml(it, cheap) {
+  const area = it.area_sqm ? num(it.area_sqm) + " кв.м" : "";
+  const per = it.price && it.area_sqm ? Math.round(it.price / it.area_sqm).toLocaleString("bg-BG") + " €/кв.м" : "";
+  const priceTxt = cheap
+    ? "<s>" + money(it.prev_price) + "</s> → " + money(it.price) + " (−" + Math.round((1 - it.price / it.prev_price) * 100) + "%)"
+    : money(it.price);
+  const ts = cheap ? it.price_changed_at : it.seen_at;
+  const fresh = (serverNow - new Date(ts)) < 3 * 3600e3;
+  return '<div class="row"><span class="dot' + (cheap ? " amber" : "") + '"></span>' +
+    '<div class="main"><div class="title">' + esc(it.property_type || "Имот") + " · " + esc(place(it)) + '</div>' +
+    '<div class="muted">' + [priceTxt, esc(area), esc(per), esc(it.source)].filter(Boolean).join(" · ") + '</div></div>' +
+    '<div class="age' + (fresh ? " fresh" : "") + '">' + ago(ts) + '</div>' +
+    '<a class="open" target="_blank" rel="noopener noreferrer" href="' + esc(safeUrl(it.listing_url)) + '">Отвори ↗</a></div>';
+}
+
+function render() {
+  const src = document.getElementById("src").value;
+  const within = (ts, h) => ts && (serverNow - new Date(ts)) <= h * 3600e3;
+  const bySrc = items.filter(it => !src || it.source === src);
+  const fresh = bySrc.filter(it => it.is_private !== false && within(it.seen_at, hours))
+                     .sort((a, b) => new Date(b.seen_at) - new Date(a.seen_at));
+  const cheap = bySrc.filter(it => it.prev_price && it.price && it.price < it.prev_price && within(it.price_changed_at, Math.max(hours, 24)))
+                     .sort((a, b) => new Date(b.price_changed_at) - new Date(a.price_changed_at));
+  document.getElementById("nNew").textContent = items.filter(it => it.is_private !== false && within(it.seen_at, 3)).length;
+  document.getElementById("nCheap").textContent = items.filter(it => it.prev_price && it.price < it.prev_price && within(it.price_changed_at, 24)).length;
+  document.getElementById("newList").innerHTML = fresh.length ? fresh.map(it => rowHtml(it, false)).join("")
+    : '<div class="empty">Няма нови частни обяви за избрания период.</div>';
+  document.getElementById("cheapList").innerHTML = cheap.length ? cheap.map(it => rowHtml(it, true)).join("")
+    : '<div class="empty">Няма намалени цени.</div>';
+}
+
+async function load() {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) return show("login");
+  try {
+    const res = await rpc("dashboard_listings", { p_token: token, p_hours: 168 });
+    if (!res.ok) { localStorage.removeItem(TOKEN_KEY); return show("login"); }
+    items = res.items || [];
+    serverNow = new Date(res.now);
+    const sel = document.getElementById("src"), cur = sel.value;
+    const sources = [...new Set(items.map(it => it.source))].sort();
+    sel.innerHTML = '<option value="">Всички източници</option>' + sources.map(s => '<option>' + esc(s) + '</option>').join("");
+    sel.value = sources.includes(cur) ? cur : "";
+    document.getElementById("updated").textContent = "обновено " + new Date().toLocaleTimeString("bg-BG", { hour: "2-digit", minute: "2-digit" });
+    show("app");
+    render();
+  } catch (e) {
+    document.getElementById("updated").textContent = "няма връзка: " + e.message;
+  }
+}
+
+document.getElementById("login").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const err = document.getElementById("loginErr");
+  err.textContent = "";
+  try {
+    const res = await rpc("dashboard_login", { p_username: document.getElementById("u").value, p_password: document.getElementById("p").value });
+    if (!res.ok) { err.textContent = res.error || "Грешен потребител или парола"; return; }
+    localStorage.setItem(TOKEN_KEY, res.token);
+    document.getElementById("p").value = "";
+    load();
+  } catch (e) { err.textContent = "Няма връзка със сървъра (" + e.message + ")"; }
+});
+document.getElementById("u").addEventListener("input", () => document.getElementById("loginErr").textContent = "");
+document.getElementById("p").addEventListener("input", () => document.getElementById("loginErr").textContent = "");
+
+document.getElementById("logout").addEventListener("click", async ev => {
+  ev.preventDefault();
+  const token = localStorage.getItem(TOKEN_KEY);
+  localStorage.removeItem(TOKEN_KEY);
+  try { if (token) await rpc("dashboard_logout", { p_token: token }); } catch (e) {}
+  show("login");
+});
+
+document.querySelectorAll("[data-h]").forEach(b => b.addEventListener("click", () => {
+  hours = Number(b.dataset.h);
+  document.querySelectorAll("[data-h]").forEach(x => x.classList.toggle("on", x === b));
+  render();
+}));
+document.getElementById("src").addEventListener("change", render);
+
+load();
+setInterval(() => { if (!document.getElementById("app").hidden) load(); }, 5 * 60e3);
+</script>
+</body>
+</html>
