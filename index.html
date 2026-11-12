@@ -29,6 +29,8 @@
   .dot.amber { background:var(--amber); }
   .main { flex:1; min-width:0; }
   .title { font-weight:600; }
+  a.title { color:var(--text); text-decoration:none; }
+  a.title:hover { color:var(--blue); text-decoration:underline; }
   .age { text-align:right; font-size:13px; white-space:nowrap; }
   .age.fresh { color:var(--red); }
   a { color:var(--blue); }
@@ -126,7 +128,8 @@ function rowHtml(it, cheap) {
   const ts = cheap ? it.price_changed_at : it.seen_at;
   const fresh = (serverNow - new Date(ts)) < 3 * 3600e3;
   return '<div class="row"><span class="dot' + (cheap ? " amber" : "") + '"></span>' +
-    '<div class="main"><div class="title">' + esc(it.property_type || "Имот") + " · " + esc(place(it)) + '</div>' +
+    '<div class="main"><a class="title" target="_blank" rel="noopener noreferrer" href="' + esc(safeUrl(it.listing_url)) + '">' +
+    esc(it.property_type || "Имот") + " · " + esc(place(it)) + '</a>' +
     '<div class="muted">' + [priceTxt, esc(area), esc(per), esc(it.source)].filter(Boolean).join(" · ") + '</div></div>' +
     '<div class="age' + (fresh ? " fresh" : "") + '">' + ago(ts) + '</div>' +
     '<a class="open" target="_blank" rel="noopener noreferrer" href="' + esc(safeUrl(it.listing_url)) + '">Отвори ↗</a></div>';
