@@ -172,8 +172,12 @@ async function load() {
     items = res.items || [];
     serverNow = new Date(res.now);
     const sel = document.getElementById("src"), cur = sel.value;
-    const sources = [...new Set(items.map(it => it.source))].sort();
-    sel.innerHTML = '<option value="">Всички източници</option>' + sources.map(s => '<option>' + esc(s) + '</option>').join("");
+    // следените източници са винаги в менюто (и с 0 обяви), за да се вижда, че се проверяват
+    const srcCount = {};
+    items.forEach(it => { srcCount[it.source] = (srcCount[it.source] || 0) + 1; });
+    const sources = [...new Set(["imot.bg", "bazar.bg", ...Object.keys(srcCount)])].sort();
+    sel.innerHTML = '<option value="">Всички източници</option>' +
+      sources.map(s => '<option value="' + esc(s) + '">' + esc(s) + ' (' + (srcCount[s] || 0) + ')</option>').join("");
     sel.value = sources.includes(cur) ? cur : "";
     fillCities();
     document.getElementById("updated").textContent = "обновено " + new Date().toLocaleTimeString("bg-BG", { hour: "2-digit", minute: "2-digit" });
