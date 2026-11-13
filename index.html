@@ -28,6 +28,9 @@
   .title { font-weight:600; }
   a.title { color:var(--text); text-decoration:none; }
   a.title:hover { color:var(--blue); text-decoration:underline; }
+  .drop { width:150px; flex:none; text-align:right; font-size:13px; line-height:1.35; }
+  .drop s { color:var(--muted); }
+  .drop b { color:var(--amber); font-weight:600; display:block; }
   .age { text-align:right; font-size:13px; white-space:nowrap; }
   .age.fresh { color:var(--red); }
   a { color:var(--blue); }
@@ -39,7 +42,7 @@
   .login button { width:100%; margin-top:16px; }
   .err { color:var(--red); font-size:13px; min-height:18px; margin-top:8px; }
   [hidden] { display:none !important; }
-  @media (max-width:560px) { .row { flex-wrap:wrap; } .age { text-align:left; } }
+  @media (max-width:560px) { .row { flex-wrap:wrap; } .age, .drop { text-align:left; } .drop { width:auto; } }
 </style>
 </head>
 <body>
@@ -67,8 +70,6 @@
     </div>
     <h2>Нови частни обяви</h2>
     <div id="newList" class="list"></div>
-    <h2>Намалена цена</h2>
-    <div id="cheapList" class="list"></div>
     <p class="muted">Данните се обновяват всеки час (07-20 ч.). Страницата се презарежда сама на 5 минути.</p>
   </section>
 </main>
@@ -110,34 +111,40 @@ function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;",
 function place(it) { return [it.city, it.district].filter(Boolean).join(", ") || "-"; }
 function safeUrl(u) { return /^https:\/\//.test(u || "") ? u : "#"; }
 
-function rowHtml(it, cheap) {
+const pct = v => v.toLocaleString("bg-BG", { maximumFractionDigits: v < 10 ? 1 : 0 });
+const dropped = it => it.prev_price && it.price && it.price < it.prev_price;
+
+function rowHtml(it, dropOn) {
   const area = it.area_sqm ? num(it.area_sqm) + " кв.м" : "";
   const per = it.price && it.area_sqm ? Math.round(it.price / it.area_sqm).toLocaleString("bg-BG") + " €/кв.м" : "";
-  const priceTxt = cheap
-    ? "<s>" + money(it.prev_price) + "</s> → " + money(it.price) + " (−" + Math.round((1 - it.price / it.prev_price) * 100) + "%)"
-    : money(it.price);
-  const ts = cheap ? it.price_changed_at : it.seen_at;
-  const fresh = (serverNow - new Date(ts)) < 3 * 3600e3;
-  return '<div class="row"><span class="dot' + (cheap ? " amber" : "") + '"></span>' +
+  const fresh = (serverNow - new Date(it.seen_at)) < 3 * 3600e3;
+  // колона "намаление": стара цена и с колко е намалена (празна, ако цената не е падала)
+  const drop = dropOn
+    ? "<s>" + money(it.prev_price) + "</s><b>−" + money(it.prev_price - it.price) + " (−" +
+      pct((1 - it.price / it.prev_price) * 100) + "%)</b><span class=\"muted\">намалена " + ago(it.price_changed_at) + "</span>"
+    : "";
+  return '<div class="row"><span class="dot' + (dropOn ? " amber" : "") + '"></span>' +
     '<div class="main"><a class="title" target="_blank" rel="noopener noreferrer" href="' + esc(safeUrl(it.listing_url)) + '">' +
     esc(it.property_type || "Имот") + " · " + esc(place(it)) + '</a>' +
-    '<div class="muted">' + [priceTxt, esc(area), esc(per), esc(it.source)].filter(Boolean).join(" · ") + '</div></div>' +
-    '<div class="age' + (fresh ? " fresh" : "") + '">' + ago(ts) + '</div>' +
+    '<div class="muted">' + [money(it.price), esc(area), esc(per), esc(it.source)].filter(Boolean).join(" · ") + '</div></div>' +
+    '<div class="drop">' + drop + '</div>' +
+    '<div class="age' + (fresh ? " fresh" : "") + '">' + (it.seen_at ? "публикувана<br>" + ago(it.seen_at) : "") + '</div>' +
     '<a class="open" target="_blank" rel="noopener noreferrer" href="' + esc(safeUrl(it.listing_url)) + '">Отвори ↗</a></div>';
 }
 
 function render() {
   const src = document.getElementById("src").value;
   const within = (ts, h) => ts && (serverNow - new Date(ts)) <= h * 3600e3;
-  const bySrc = items.filter(it => (!src || it.source === src));
-  const fresh = bySrc.filter(it => it.is_private !== false && within(it.seen_at, hours))
-                     .sort((a, b) => new Date(b.seen_at) - new Date(a.seen_at));
-  const cheap = bySrc.filter(it => it.prev_price && it.price && it.price < it.prev_price && within(it.price_changed_at, Math.max(hours, 24)))
-                     .sort((a, b) => new Date(b.price_changed_at) - new Date(a.price_changed_at));
-  document.getElementById("newList").innerHTML = fresh.length ? fresh.map(it => rowHtml(it, false)).join("")
-    : '<div class="empty">Няма нови частни обяви за избрания период.</div>';
-  document.getElementById("cheapList").innerHTML = cheap.length ? cheap.map(it => rowHtml(it, true)).join("")
-    : '<div class="empty">Няма намалени цени.</div>';
+  // един списък: нови частни обяви за периода + обяви с намалена цена за периода (със запълнена колона "намаление")
+  const rows = items
+    .filter(it => (!src || it.source === src) && it.is_private !== false)
+    .map(it => ({ it, dropOn: dropped(it) && within(it.price_changed_at, hours) }))
+    .filter(r => r.dropOn || within(r.it.seen_at, hours))
+    .map(r => ({ ...r, when: Math.max(within(r.it.seen_at, hours) ? +new Date(r.it.seen_at) : 0,
+                                      r.dropOn ? +new Date(r.it.price_changed_at) : 0) }))
+    .sort((a, b) => b.when - a.when);
+  document.getElementById("newList").innerHTML = rows.length ? rows.map(r => rowHtml(r.it, r.dropOn)).join("")
+    : '<div class="empty">Няма нови частни обяви и намалени цени за избрания период.</div>';
 }
 
 async function load() {
