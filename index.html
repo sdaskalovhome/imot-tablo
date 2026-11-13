@@ -66,6 +66,8 @@
       <button data-h="3" class="on">3 часа</button>
       <button data-h="24">24 часа</button>
       <button data-h="168">7 дни</button>
+      <button data-h="360">15 дни</button>
+      <button data-h="720">30 дни</button>
       <select id="src" aria-label="Източник"><option value="">Всички източници</option></select>
     </div>
     <h2>Нови частни обяви</h2>
@@ -151,7 +153,7 @@ async function load() {
   const token = localStorage.getItem(TOKEN_KEY);
   if (!token) return show("login");
   try {
-    const res = await rpc("dashboard_listings", { p_token: token, p_hours: 168 });
+    const res = await rpc("dashboard_listings", { p_token: token, p_hours: 720 });
     if (!res.ok) { localStorage.removeItem(TOKEN_KEY); return show("login"); }
     items = res.items || [];
     serverNow = new Date(res.now);
