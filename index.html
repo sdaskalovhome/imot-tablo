@@ -35,6 +35,9 @@
   .age.fresh { color:var(--red); }
   a { color:var(--blue); }
   a.open { text-decoration:none; font-size:13px; white-space:nowrap; }
+  .ext { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px; font-size:13px; }
+  a.extbtn { color:var(--muted); border:1px dashed var(--line); border-radius:8px; padding:4px 10px; text-decoration:none; }
+  a.extbtn:hover { color:var(--blue); border-color:var(--blue); }
   .empty { padding:14px; color:var(--muted); }
   .login { max-width:340px; margin:12vh auto; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; }
   .login label { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
@@ -69,6 +72,13 @@
       <button data-h="360">15 дни</button>
       <button data-h="720">30 дни</button>
       <select id="src" aria-label="Източник"><option value="">Всички източници</option></select>
+    </div>
+    <!-- външни сайтове: само отварят тяхното търсене със същите условия като списъка (не се чете нищо от тях) -->
+    <div class="ext">
+      <span class="muted">Виж и в:</span>
+      <a class="extbtn" target="_blank" rel="noopener noreferrer"
+         title="OLX: продажби, Варна, всички видове, само частни, най-новите първо"
+         href="https://www.olx.bg/nedvizhimi-imoti/prodazhbi/varna/?search%5Bprivate_business%5D=private&amp;search%5Border%5D=created_at:desc">OLX ↗</a>
     </div>
     <h2>Нови частни обяви</h2>
     <div id="newList" class="list"></div>
